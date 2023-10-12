@@ -50,7 +50,13 @@ final class IOVideoUnit: NSObject, IOUnit {
     private var extent = CGRect.zero {
         didSet {
             guard extent != oldValue else {
+                if(pixelBufferPool != nil) {
+                    CVPixelBufferPoolFlush(pixelBufferPool!, CVPixelBufferPoolFlushFlags.excessBuffers)
+                }
                 return
+            }
+            if(pixelBufferPool != nil) {
+                CVPixelBufferPoolFlush(pixelBufferPool!, CVPixelBufferPoolFlushFlags.excessBuffers)
             }
             CVPixelBufferPoolCreate(nil, nil, attributes as CFDictionary?, &pixelBufferPool)
             pixelBufferPool?.createPixelBuffer(&pixelBuffer)
@@ -255,19 +261,29 @@ final class IOVideoUnit: NSObject, IOUnit {
         }
         if drawable != nil || !effects.isEmpty {
             let image = effect(buffer, info: sampleBuffer)
+            print("extent change=>", extent.width, extent.height, image.extent.width, image.extent.height)
             extent = image.extent
             if !effects.isEmpty {
                 #if os(macOS)
                 pixelBufferPool?.createPixelBuffer(&imageBuffer)
                 #else
                 if buffer.width != Int(extent.width) || buffer.height != Int(extent.height) {
+                    print("buffer=>", buffer.width, buffer.height, extent.width, extent.height)
                     pixelBufferPool?.createPixelBuffer(&imageBuffer)
+                    
+                    if(pixelBufferPool != nil) {
+                        CVPixelBufferPoolFlush(pixelBufferPool!, CVPixelBufferPoolFlushFlags.excessBuffers)
+                    }
                 }
                 #endif
                 imageBuffer?.lockBaseAddress()
                 context.render(image, to: imageBuffer ?? buffer)
             }
             drawable?.enqueue(sampleBuffer)
+        }
+        
+        if(pixelBufferPool != nil) {
+            CVPixelBufferPoolFlush(pixelBufferPool!, CVPixelBufferPoolFlushFlags.excessBuffers)
         }
         if muted {
             imageBuffer = pixelBuffer
